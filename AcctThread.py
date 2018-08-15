@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 
 #    Copyright (c) 2018 Ripple Labs Inc.
 #
@@ -14,7 +14,6 @@
 #    ACTION  OF  CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 #    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-
 # Walk back through an account node's history and report all transactions
 # that affect the account in reverse order (from newest to oldest).
 #
@@ -27,254 +26,251 @@ import websocket
 
 from websocket import create_connection
 
-# Extract command line arguments.
-def extractArgs ():
+
+def extract_args():
+    '''Extract command line arguments'''
 
     # Default websocket connection if none provided.
-    connectTo = "ws://s2.ripple.com:443"
+    connect_to = "ws://s2.ripple.com:443"
 
-    usage = 'usage: PyAcctThread <Account ID> [ws://<Server>:<port>]\n'\
-        'If <server>:<port> are omitted defaults to "{0}"'.format (connectTo)
+    usage = f'''usage: PyAcctThread <Account ID> [ws://<Server>:<port>]
+If <server>:<port> are omitted defaults to "{connect_to}"'''
 
     # Extract the first argument: the accountID
-    argCount = len (sys.argv) - 1
-    if argCount < 1:
-        print ('Expected account ID as first argument.\n')
-        print (usage)
-        sys.exit (1)  # abort because of error
+    arg_count = len(sys.argv) - 1
+    if arg_count < 1:
+        print('Expected account ID as first argument.\n')
+        print(usage)
+        sys.exit(1)  # abort because of error
 
     # Sanity check the accountID string
-    accountId = sys.argv[1]
-    idLen = len (accountId)
-    if (accountId[:1] != "r") or (idLen < 25) or (idLen > 35):
-        print ('Invalid format for account ID.\n'\
-            'Should start with "r" with length between 25 and 35 characters.\n')
-        print (usage)
-        sys.exit (1)  # abort because of error
+    account_id = sys.argv[1]
+    id_len = len(account_id)
+    if (account_id[:1] != "r") or (id_len < 25) or (id_len > 35):
+        print(
+            'Invalid format for account ID.\n',
+            'Should start with "r" with length between 25 and 35 characters.\n'
+        )
+        print(usage)
+        sys.exit(1)  # abort because of error
 
-    if argCount > 2:
-        print ('Too many command line arguments.\n')
-        print (usage)
-        sys.exit (1)  # abort because of error
+    if arg_count > 2:
+        print('Too many command line arguments.\n')
+        print(usage)
+        sys.exit(1)  # abort because of error
 
-    # If it's there, pick up the optional connectTo.
-    if argCount == 2:
-        connectTo = sys.argv[2]
+    # If it's there, pick up the optional connect_to.
+    if arg_count == 2:
+        connect_to = sys.argv[2]
 
-    # Validate the connectTo.
-    if connectTo[:5] != "ws://":
-        print ('Invalid format for websocket connection.  Expected "ws://".  '\
-            'Got: {0}\n'.format (connectTo))
-        print (usage)
-        sys.exit (1)  # abort because of error
+    # Validate the connect_to.
+    if connect_to[:5] != "ws://":
+        print('Invalid format for websocket connection.  Expected "ws://".  ',
+              f'Got: {connect_to}\n')
+        print(usage)
+        sys.exit(1)  # abort because of error
 
     # Verify that the port is specified.
-    if not re.search (r'\:\d+$', connectTo):
-        print ('Invalid format for websocket connection.  Connection expected '\
-            'to end with \nport specifier (colon followed by digits), '\
-            'e.g., ws://s2.ripple.com:443')
-        print ('Got: {0}\n'.format (connectTo))
-        print (usage)
-        sys.exit (1)  # abort because of error
+    if not re.search(r'\:\d+$', connect_to):
+        print('Invalid format for websocket connection.  Connection expected ',
+              'to end with \nport specifier (colon followed by digits), ',
+              'e.g., ws://s2.ripple.com:443')
+        print(f'Got: {connect_to}\n')
+        print(usage)
+        sys.exit(1)  # abort because of error
 
-    return connectTo, accountId
-
-
-# Used to track websocket requests.
-wsIdValue = 0
-
-# Generate a new websocket request ID and return it.
-def wsId ():
-    global wsIdValue
-    wsIdValue += 1
-    return wsIdValue
+    return connect_to, account_id
 
 
-# Get the websocket response that matches the id of the request.  All
-# responses are in json, so return json.
-def getResponse (ws, id):
+def ws_id():
+    '''Generate a new websocket request ID and return it'''
+    ws_id.value += 1
+    return ws_id.value
+ws_id.value = 0
+
+
+def get_response(ws, req_id):
+    '''Get the websocket response that matches the id of the request.
+       All responses are in json, so return json.'''
     while True:
-        msg = ws.recv ()
-        jsonMsg = json.loads (msg)
-        gotId = jsonMsg["id"]
-        if (gotId == id):
-            return jsonMsg
-        print ("Unexpected websocket message id: {0}.  Expected {1}.".format (
-            gotId, id))
+        msg = ws.recv()
+        json_msg = json.loads(msg)
+        got_id = json_msg["id"]
+        if got_id == req_id:
+            return json_msg
+        print(
+            f"Unexpected websocket message id: {got_id}.  Expected {req_id}.")
 
 
-# Request account_info, print it, and return it as JSON.
-def printAccountInfo (ws, accountId):
-    id = wsId ()
+def print_account_info(ws, account_id):
+    '''Request account_info, print it, and return it as JSON'''
+    wsid = ws_id()
 
-    cmd = """
+    cmd = f"""
 {{
-    "id" : {0},
+    "id" : {wsid},
     "command" : "account_info",
-    "account" : "{1}",
+    "account" : "{account_id}",
     "strict" : true,
     "ledger_index" : "validated"
-}}""".format (id, accountId)
+}}"""
 
-    ws.send (cmd)
-    jsonMsg = getResponse (ws, id)
+    ws.send(cmd)
+    json_msg = get_response(ws, wsid)
 
     # Remove the websocket id to reduce noise.
-    jsonMsg.pop ("id", None)
-    print (json.dumps (jsonMsg, indent = 4))
-    return jsonMsg
+    json_msg.pop("id", None)
+    print(json.dumps(json_msg, indent=4))
+    return json_msg
 
 
-# Request tx by txnId, print it, and return the tx as JSON.
-def printTx (ws, txnId):
-    id = wsId ()
+def print_tx(ws, txn_id):
+    '''Request tx by tnx_id, print it, and return the tx as JSON'''
+    wsid = ws_id()
 
-    cmd = """
+    cmd = f"""
 {{
-    "id" : {0},
+    "id" : {wsid},
     "command" : "tx",
-    "transaction" : "{1}"
-}}""".format (id, txnId)
+    "transaction" : "{txn_id}"
+}}"""
 
-    ws.send (cmd)
-    jsonMsg = getResponse (ws, id)
+    ws.send(cmd)
+    json_msg = get_response(ws, wsid)
 
     # Remove the websocket id from what we print to reduce noise.
-    jsonMsg.pop ("id", None)
-    print (json.dumps (jsonMsg, indent = 4))
-    return jsonMsg
+    json_msg.pop("id", None)
+    print(json.dumps(json_msg, indent=4))
+    return json_msg
 
 
-# Extract the PreviousTxnID for accountID given a transaction's metadata.
-def getPrevTxnId (jsonMsg, accountId):
+def get_prev_txn_id(json_msg, account_id):
+    '''Extract the PreviousTxnID for accountID given a transaction's metadata'''
 
     # Handle any errors that might be in the response.
-    if "error" in jsonMsg:
+    if "error" in json_msg:
 
         # If the error is txnNotFound there there's a good chance
         # the server does not have enough history.
-        if jsonMsg["error"] == "txnNotFound":
-            print ("Transaction not found.  "
-                "Does your server have enough history?  Unexpected stop.")
+        if json_msg["error"] == "txnNotFound":
+            print("Transaction not found.",
+                  "Does your server have enough history? Unexpected stop.")
             return ""
 
-        err = jsonMsg["error"]
-        if jsonMsg[error_message]:
-            err = jsonMsg[error_message]
+        err = json_msg["error"]
+        if json_msg['error_message']:
+            err = json_msg['error_message']
 
-        print (err + "  Unexpected stop.")
+        print(f"{err}  Unexpected stop.")
         return ""
 
     # First navigate to the metadata AffectedNodes, which should be a list.
     try:
-        affectedNodes = jsonMsg["result"]["meta"]["AffectedNodes"]
+        affected_nodes = json_msg["result"]["meta"]["AffectedNodes"]
     except KeyError:
-        print ("No AffectedNodes found in transaction.  Unexpected stop.\n")
-        print ("Got:")
-        print (json.dumps (jsonMsg, indent = 4))
+        print("No AffectedNodes found in transaction.  Unexpected stop.\n")
+        print("Got:")
+        print(json.dumps(json_msg, indent=4))
         return ""
 
-    for node in affectedNodes:
+    for node in affected_nodes:
         # If we find the account being created then we're successfully done.
         try:
             if node["CreatedNode"]["LedgerEntryType"] == "AccountRoot":
-                if node["CreatedNode"]["NewFields"]["Account"] == accountId:
-                    print (
-                        'Created Account {0}.  Done.'.format (accountId))
+                if node["CreatedNode"]["NewFields"]["Account"] == account_id:
+                    print(f'Created Account {account_id}.  Done.')
                     return ""
         except KeyError:
-            pass # If the field is not found that's okay.
+            pass  # If the field is not found that's okay.
 
         # Else look for the next transaction.
         try:
-            if node["ModifiedNode"]["FinalFields"]["Account"] == accountId:
+            if node["ModifiedNode"]["FinalFields"]["Account"] == account_id:
                 return node["ModifiedNode"]["PreviousTxnID"]
         except KeyError:
-            continue;  # If the field is not found try the next node.
+            continue
+            # If the field is not found try the next node.
 
-    print ("No more modifying transactions found.  Unexpected stop.\n")
-    print ("Got:")
-    print (json.dumps (jsonMsg, indent = 4))
+    print("No more modifying transactions found.  Unexpected stop.\n")
+    print("Got:")
+    print(json.dumps(json_msg, indent=4))
     return ""
 
 
-# Write spinner to stderr to show liveness while walking the thread.
-def SpinningCursor ():
+def spinning_cursor():
+    '''Write spinner to stderr to show liveness while walking the thread'''
     while True:
         for cursor in '|/-\\':
-            sys.stderr.write (cursor)
-            sys.stderr.flush ()
+            sys.stderr.write(cursor)
+            sys.stderr.flush()
             yield
-            sys.stderr.write ('\b')
+            sys.stderr.write('\b')
 
 
-# Thread the account to extract all transactions performed by that account.
-#    1. Start by getting account_info for the accountId in the most recent
-#       validated ledger.
-#    2. account_info returns the TxId of the last transaction that affected
-#       this account.
-#    3. Call tx with that TxId.  Save that transaction.
-#    4. The tx response should contain the AccountRoot for the accountId.
-#       Extract the new value of PreviousTxID from the AccountRoot.
-#    5. Return to step 3, but using the new PreviousTxID.
-def threadAccount (ws, accountId):
+def thread_account(ws, account_id):
+    '''Thread the account to extract all transactions performed by that account.
+       1. Start by getting account_info for the account_id in the most recent
+          validated ledger.
+       2. account_info returns the TxId of the last transaction that affected
+          this account.
+       3. Call tx with that TxId.  Save that transaction.
+       4. The tx response should contain the AccountRoot for the account_id.
+          Extract the new value of PreviousTxID from the AccountRoot.
+       5. Return to step 3, but using the new PreviousTxID.'''
 
     # Call account_info to get our starting txId.
-    jsonMsg = printAccountInfo (ws, accountId)
+    json_msg = print_account_info(ws, account_id)
 
     # Handle any errors that might be in the response.
-    if "error" in jsonMsg:
-        print ('No account_info for accountID {0}'.format (accountId))
-        if jsonMsg["error"] == "actMalformed":
-            print ("Did you mistype the accountID?")
+    if "error" in json_msg:
+        print(f'No account_info for accountID {account_id}')
+        if json_msg["error"] == "actMalformed":
+            print("Did you mistype the accountID?")
 
-        err = jsonMsg["error"]
-        if jsonMsg["error_message"]:
-            err = jsonMsg["error_message"]
+        err = json_msg["error"]
+        if json_msg["error_message"]:
+            err = json_msg["error_message"]
 
-        print (err + "  Unexpected stop.")
+        print(f"{err}  Unexpected stop.")
         return
 
     # Extract the starting txId.
-    prevTxnId = ""
+    prev_txn_id = ""
     try:
-        prevTxnId = jsonMsg["result"]["account_data"]["PreviousTxnID"]
+        prev_txn_id = json_msg["result"]["account_data"]["PreviousTxnID"]
     except KeyError:
-        print (
-            "No PreviousTxnID found for {0}.  No transactions found.".format (
-                accountId))
+        print(
+            f"No PreviousTxnID found for {account_id}.  No transactions found."
+        )
         return
 
     # Transaction threading loop.
-    spinner = SpinningCursor ()  # Liveness indicator.
-    while prevTxnId != "":
-        next (spinner)
-        print ("\n" + ("-" * 79) + "\n")
-        jsonMsg = printTx (ws, prevTxnId)
-        prevTxnId = getPrevTxnId (jsonMsg, accountId)
+    spinner = spinning_cursor()  # Liveness indicator.
+    while prev_txn_id != "":
+        next(spinner)
+        print("\n" + ("-" * 79) + "\n")
+        json_msg = print_tx(ws, prev_txn_id)
+        prev_txn_id = get_prev_txn_id(json_msg, account_id)
 
 
-# Open the websocket connection and pass the websocket upstream for use.
-def openConnection (connectTo, accountId):
+def open_connection(connect_to, account_id):
+    '''Open the websocket connection and pass the websocket upstream for use'''
     try:
-        ws = create_connection (connectTo)
+        ws = create_connection(connect_to)
     except websocket._exceptions.WebSocketAddressException:
-        print ("Unable to open connection to {0}.\n".format (connectTo))
-        return;
+        print(f"Unable to open connection to {connect_to}.\n")
+        return
     except ConnectionRefusedError:
-        print ("Connection to {0} refused.\n".format (connectTo))
+        print(f"Connection to {connect_to} refused.\n")
         return
 
     try:
-        threadAccount (ws, accountId)
+        thread_account(ws, account_id)
     finally:
-        ws.close ()
-        sys.stderr.write ('\b') # Clean up from SpinningCursor
+        ws.close()
+        sys.stderr.write('\b')  # Clean up from spinning_cursor
 
 
 if __name__ == "__main__":
-    # Get command line arguments.
-    connectTo, accountId = extractArgs ()
-
     # Open the connection then thread the account.
-    openConnection (connectTo, accountId)
+    open_connection(*extract_args())
