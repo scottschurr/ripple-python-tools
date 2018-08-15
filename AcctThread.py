@@ -33,7 +33,7 @@ def extract_args():
     # Default websocket connection if none provided.
     connect_to = "ws://s2.ripple.com:443"
 
-    usage = f'''usage: PyAcctThread <Account ID> [ws://<Server>:<port>]
+    usage = f'''usage: PyAcctThread <Account ID> [ws://<server>:<port>]
 If <server>:<port> are omitted defaults to "{connect_to}"'''
 
     # Extract the first argument: the accountID
@@ -48,8 +48,8 @@ If <server>:<port> are omitted defaults to "{connect_to}"'''
     id_len = len(account_id)
     if (account_id[:1] != "r") or (id_len < 25) or (id_len > 35):
         print(
-            'Invalid format for account ID.\n',
-            'Should start with "r" with length between 25 and 35 characters.\n'
+            'Invalid format for account ID. Should start with "r" and',
+            '\nlength should be between 25 and 35 characters.\n'
         )
         print(usage)
         sys.exit(1)  # abort because of error
@@ -65,8 +65,8 @@ If <server>:<port> are omitted defaults to "{connect_to}"'''
 
     # Validate the connect_to.
     if connect_to[:5] != "ws://":
-        print('Invalid format for websocket connection.  Expected "ws://".  ',
-              f'Got: {connect_to}\n')
+        print('Invalid format for websocket connection.',
+              f'\nExpected: ws://...  Got: {connect_to}\n')
         print(usage)
         sys.exit(1)  # abort because of error
 
@@ -106,16 +106,15 @@ def print_account_info(ws, account_id):
     '''Request account_info, print it, and return it as JSON'''
     wsid = ws_id()
 
-    cmd = f"""
-{{
-    "id" : {wsid},
-    "command" : "account_info",
-    "account" : "{account_id}",
-    "strict" : true,
-    "ledger_index" : "validated"
-}}"""
+    cmd = {
+        "id" : wsid,
+        "command" : "account_info",
+        "account" : account_id,
+        "strict" : True,
+        "ledger_index" : "validated"
+    }
 
-    ws.send(cmd)
+    ws.send(json.dumps(cmd))
     json_msg = get_response(ws, wsid)
 
     # Remove the websocket id to reduce noise.
@@ -128,14 +127,13 @@ def print_tx(ws, txn_id):
     '''Request tx by tnx_id, print it, and return the tx as JSON'''
     wsid = ws_id()
 
-    cmd = f"""
-{{
-    "id" : {wsid},
-    "command" : "tx",
-    "transaction" : "{txn_id}"
-}}"""
+    cmd = {
+        "id": wsid,
+        "command": "tx",
+        "transaction": txn_id
+    }
 
-    ws.send(cmd)
+    ws.send(json.dumps(cmd))
     json_msg = get_response(ws, wsid)
 
     # Remove the websocket id from what we print to reduce noise.
@@ -169,8 +167,6 @@ def get_prev_txn_id(json_msg, account_id):
         affected_nodes = json_msg["result"]["meta"]["AffectedNodes"]
     except KeyError:
         print("No AffectedNodes found in transaction.  Unexpected stop.\n")
-        print("Got:")
-        print(json.dumps(json_msg, indent=4))
         return ""
 
     for node in affected_nodes:
@@ -188,12 +184,9 @@ def get_prev_txn_id(json_msg, account_id):
             if node["ModifiedNode"]["FinalFields"]["Account"] == account_id:
                 return node["ModifiedNode"]["PreviousTxnID"]
         except KeyError:
-            continue
-            # If the field is not found try the next node.
+            continue  # If the field is not found try the next node.
 
     print("No more modifying transactions found.  Unexpected stop.\n")
-    print("Got:")
-    print(json.dumps(json_msg, indent=4))
     return ""
 
 
