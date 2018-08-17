@@ -18,11 +18,13 @@
 # that affect the account in reverse order (from newest to oldest).
 #
 # To capture results redirect stdout to a file.
+#
+# NOTE: Requires installation of non-standard websocket-client module.
 
 import json
 import re
 import sys
-import websocket
+import websocket  # From websocket-client module.
 
 from websocket import create_connection
 
@@ -31,9 +33,9 @@ def extract_args():
     '''Extract command line arguments'''
 
     # Default websocket connection if none provided.
-    connect_to = "ws://s2.ripple.com:443"
+    connect_to = "wss://s2.ripple.com:443"
 
-    usage = f'''usage: PyAcctThread <Account ID> [ws://<server>:<port>]
+    usage = f'''usage: PyAcctThread <Account ID> [wss://<server>:<port>]
 If <server>:<port> are omitted defaults to "{connect_to}"'''
 
     # Extract the first argument: the accountID
@@ -64,17 +66,17 @@ If <server>:<port> are omitted defaults to "{connect_to}"'''
         connect_to = sys.argv[2]
 
     # Validate the connect_to.
-    if connect_to[:5] != "ws://":
+    if not re.search(r'^wss?://', connect_to):
         print('Invalid format for websocket connection.',
-              f'\nExpected: ws://...  Got: {connect_to}\n')
+              f'\nExpected either wss://... or ws://...  Got: {connect_to}\n')
         print(usage)
         sys.exit(1)  # abort because of error
 
     # Verify that the port is specified.
     if not re.search(r'\:\d+$', connect_to):
-        print('Invalid format for websocket connection.  Connection expected ',
-              'to end with \nport specifier (colon followed by digits), ',
-              'e.g., ws://s2.ripple.com:443')
+        print('Invalid format for websocket connection. Connection expected',
+              'to end with \nport specifier (colon followed by digits),',
+              'e.g., wss://s2.ripple.com:443')
         print(f'Got: {connect_to}\n')
         print(usage)
         sys.exit(1)  # abort because of error
@@ -97,7 +99,10 @@ def get_response(ws, req_id):
         json_msg = json.loads(msg)
         got_id = json_msg["id"]
         if got_id == req_id:
+            # Remove the websocket id to reduce noise.
+            json_msg.pop("id", None)
             return json_msg
+
         print(
             f"Unexpected websocket message id: {got_id}.  Expected {req_id}.")
 
@@ -116,15 +121,12 @@ def print_account_info(ws, account_id):
 
     ws.send(json.dumps(cmd))
     json_msg = get_response(ws, wsid)
-
-    # Remove the websocket id to reduce noise.
-    json_msg.pop("id", None)
     print(json.dumps(json_msg, indent=4))
     return json_msg
 
 
 def print_tx(ws, txn_id):
-    '''Request tx by tnx_id, print it, and return the tx as JSON'''
+    '''Request tx by txn_id, print it, and return the tx as JSON'''
     wsid = ws_id()
 
     cmd = {
@@ -135,9 +137,6 @@ def print_tx(ws, txn_id):
 
     ws.send(json.dumps(cmd))
     json_msg = get_response(ws, wsid)
-
-    # Remove the websocket id from what we print to reduce noise.
-    json_msg.pop("id", None)
     print(json.dumps(json_msg, indent=4))
     return json_msg
 
@@ -155,9 +154,10 @@ def get_prev_txn_id(json_msg, account_id):
                   "Does your server have enough history? Unexpected stop.")
             return ""
 
-        err = json_msg["error"]
-        if json_msg['error_message']:
-            err = json_msg['error_message']
+        if "error_message" in json_msg:
+            err = json_msg["error_message"]
+        else:
+            err = json_msg["error"] + "."
 
         print(f"{err}  Unexpected stop.")
         return ""
@@ -170,19 +170,19 @@ def get_prev_txn_id(json_msg, account_id):
         return ""
 
     for node in affected_nodes:
+        # Look for the next transaction.
+        try:
+            if node["ModifiedNode"]["FinalFields"]["Account"] == account_id:
+                return node["ModifiedNode"]["PreviousTxnID"]
+        except KeyError:
+            pass  # If the field is not found that's okay.
+
         # If we find the account being created then we're successfully done.
         try:
             if node["CreatedNode"]["LedgerEntryType"] == "AccountRoot":
                 if node["CreatedNode"]["NewFields"]["Account"] == account_id:
                     print(f'Created Account {account_id}.  Done.')
                     return ""
-        except KeyError:
-            pass  # If the field is not found that's okay.
-
-        # Else look for the next transaction.
-        try:
-            if node["ModifiedNode"]["FinalFields"]["Account"] == account_id:
-                return node["ModifiedNode"]["PreviousTxnID"]
         except KeyError:
             continue  # If the field is not found try the next node.
 
@@ -208,8 +208,8 @@ def thread_account(ws, account_id):
           this account.
        3. Call tx with that TxId.  Save that transaction.
        4. The tx response should contain the AccountRoot for the account_id.
-          Extract the new value of PreviousTxID from the AccountRoot.
-       5. Return to step 3, but using the new PreviousTxID.'''
+          Extract the new value of PreviousTxnID from the AccountRoot.
+       5. Return to step 3, but using the new PreviousTxnID.'''
 
     # Call account_info to get our starting txId.
     json_msg = print_account_info(ws, account_id)
